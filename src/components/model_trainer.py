@@ -16,7 +16,7 @@ from src.utils import save_object, evaluate_models
 
 @dataclass
 class ModelTrainConfig:
-    trained_model_file_path = os.path.join('artificats', 'best_model.pkl')
+    trained_model_file_path = os.path.join('artifacts', 'best_model.pkl')
 
 class ModelTrainer:
     def __init__(self):
@@ -35,7 +35,7 @@ class ModelTrainer:
         try:
             logging.info('Splitting X and y')
             X_train, y_train = train_array[:, :-1], train_array[:, -1]
-            X_test, y_test = test_array[:, :-1], train_array[:, -1]
+            X_test, y_test = test_array[:, :-1], test_array[:, -1]
 
             models = {
                 'LinearRegression': LinearRegression(),
@@ -47,19 +47,19 @@ class ModelTrainer:
             params = {
                 'LinearRegression': {},
                 'RandomForest':{
-                    'n_estimators': [50, 400, 1000],
+                    'n_estimators': [100, 500, 1000],
                     'max_depth': [None, 10, 20],
                 },
 
                 'GradientBoosting':{
-                    'learning_rate': [0.01, 0.05, 0.1],
-                    'n_estimators':{50, 100, 350},
-                    'subsample':[0.8, 1.0],
+                    'learning_rate': [0.1, 0.05],
+                    'n_estimators':[300, 400, 900],
+                    'subsample':[1.0],
                 },
 
                 'XGBoost':{
-                    'learning_rate': [0.01, 0.05, 0.1],
-                    'n_estimators':{50, 100, 350},
+                    'learning_rate': [00.1, 0.05],
+                    'n_estimators':[350, 500, 1000],
                 }
             }
 
@@ -70,23 +70,17 @@ class ModelTrainer:
             )
 
 
-            best_model_score = max(model_report.value())
-            best_model_name = list(model_report.keys())[list(model_report.values()).index(best_model_score)]
-            best_model = models[best_model_name]
-
-            if best_model_score <0.6:
-                raise CustomException('No Model met performance threshold')
-            
-            logging.info(f'Best Model: {best_model_name} with R2 score: {best_model_score}')
+            best_model_name, best_model_metrics = max(model_report.items(), key=lambda x: x[1]['r2'])
+            best_model = best_model_metrics['model']
+            logging.info(f"Best Model: {best_model_name} | R2: {best_model['r2']:.4f}")
 
             save_object(
                 file_path=self.model_trainer_config.trained_model_file_path,
-                obj = best_model
+                obj=best_model['model'] 
             )
 
-            y_pred = best_model.predict(X_test)
-            r2 = r2_score(y_test, y_pred)
-            return r2
+
+            return best_model_metrics
             
 
 

@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from src.exception import CustomException
 from src.logger import logging
 
+from src.components.data_transformation import DataTransformation
+from src.components.data_transformation import DataTransformationConfig
+
+from src.components.model_trainer import ModelTrainer
+from src.components.model_trainer import ModelTrainConfig
+
+
 @dataclass
 class DataIngestionConfig:
     raw_data_dir:str = os.path.join("artifacts", "raw")
@@ -22,7 +29,7 @@ class DataIngestion:
         self.column_names = [
             'unit_number', 'time_in_cycles',
             'op_setting_1', 'op_setting_2', 'op_setting_3'
-        ] + [f"sensor_{i}" for i in range(1,22)]
+        ] + [f"sensor{i}" for i in range(1,22)]
 
     def read_file(self, file_path):
         df = pd.read_csv(file_path, sep='\s+', header=None)
@@ -64,4 +71,9 @@ class DataIngestion:
 if __name__ == '__main__':
     ingestion = DataIngestion()
     train, test, rul = ingestion.initiate_data_ingestion()
-    print(f"Train: {train}\n Test: {test}\n RUL:{rul}")
+    #print(f"Train: {train}\n Test: {test}\n RUL:{rul}")
+    data_transformation = DataTransformation()
+    train_arr, test_arr, _ = data_transformation.initiate_data_transformation(train, test)
+
+    modeltrainer = ModelTrainer()
+    print(modeltrainer.initate_model_trainer(train_arr, test_arr))
