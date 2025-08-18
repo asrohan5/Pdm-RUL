@@ -1,79 +1,60 @@
 import os
 import sys
 import pandas as pd
-import numpy as np
-from dataclasses import dataclass
-from src.exception import CustomException
 from src.logger import logging
-
-from src.components.data_transformation import DataTransformation
-from src.components.data_transformation import DataTransformationConfig
-
-from src.components.model_trainer import ModelTrainer
-from src.components.model_trainer import ModelTrainConfig
-
-
-@dataclass
-class DataIngestionConfig:
-    raw_data_dir:str = os.path.join("artifacts", "raw")
-    processed_data_dir:str = os.path.join("artifacts", "processed")
-    train_data_path:str = os.path.join("artifacts", "processed", "train.csv")
-    test_data_path:str = os.path.join("artifacts", "processed", "test.csv")
-    rul_data_path:str = os.path.join("artifacts", "processed", "rul.csv")
-
+from src.exception import CustomException
 
 class DataIngestion:
-    
-    def __init__(self):
-        self.config = DataIngestionConfig()
-        self.column_names = [
-            'unit_number', 'time_in_cycles',
-            'op_setting_1', 'op_setting_2', 'op_setting_3'
-        ] + [f"sensor{i}" for i in range(1,22)]
+    def __init__(self,
+                 raw_data_dir="D:/My Projects/Predictive Maintainability RUL/artifacts/raw",
+                 processed_data_dir="D:/My Projects/Predictive Maintainability RUL/artifacts/processed"):
+        self.raw_data_dir = raw_data_dir
+        self.processed_data_dir = processed_data_dir
+        os.makedirs(self.processed_data_dir, exist_ok=True)
 
-    def read_file(self, file_path):
-        df = pd.read_csv(file_path, sep='\s+', header=None)
-        df.columns = self.column_names
-        return df
-    
-    def initiate_data_ingestion(self):
-        logging.info("Starting Data Ingestion 1")
+        # C-MAPSS FD001 column names
+        self.column_names = (
+            ['unit_number', 'time_in_cycles',
+             'op_setting_1', 'op_setting_2', 'op_setting_3'] +
+            [f'sensor{i}' for i in range(1, 22)]
+        )
+
+    def initiate_data_ingestion(self, train_path: str, test_path: str, rul_path: str):
+        logging.info("Starting Data Ingestion")
 
         try:
-            os.makedirs(self.config.processed_data_dir, exist_ok = True)
+            # Read raw train & test with correct headers
+            logging.info("Reading train and test datasets")
+            train_df = pd.read_csv(train_path, sep=r"\s+", header=None, names=self.column_names)
+            test_df = pd.read_csv(test_path, sep=r"\s+", header=None, names=self.column_names)
 
-            train_path = os.path.join(self.config.raw_data_dir, 'train_FD001.txt')
-            test_path = os.path.join(self.config.raw_data_dir, 'test_FD001.txt')
-            rul_path = os.path.join(self.config.raw_data_dir, "RUL_FD001.txt")
+            # Read RUL file (single column, no header)
+            rul_df = pd.read_csv(rul_path, sep=r"\s+", header=None, names=['RUL'])
 
-            train_df = self.read_file(train_path)
-            test_df = self.read_file(test_path)
-            rul_df = pd.read_csv(rul_path, header = None)
-            rul_df.columns = ['RUL']
+            # Save processed versions
+            train_file = os.path.join(self.processed_data_dir, "train.csv")
+            test_file = os.path.join(self.processed_data_dir, "test.csv")
+            rul_file = os.path.join(self.processed_data_dir, "rul.csv")
 
-            train_df.to_csv(self.config.train_data_path, index = False)
-            test_df.to_csv(self.config.test_data_path, index = False)
-            rul_df.to_csv(self.config.rul_data_path, index = False)
+            train_df.to_csv(train_file, index=False)
+            test_df.to_csv(test_file, index=False)
+            rul_df.to_csv(rul_file, index=False)
 
-            logging.info('Data Ingestion Complete 1')
+            logging.info(f"Train data saved at: {train_file}")
+            logging.info(f"Test data saved at: {test_file}")
+            logging.info(f"RUL data saved at: {rul_file}")
 
-            return(
-                self.config.train_data_path,
-                self.config.test_data_path,
-                self.config.rul_data_path
-            )
+            return train_file, test_file, rul_file
 
         except Exception as e:
-            raise CustomException(e,sys)
+            logging.error("Error occurred during data ingestion")
+            raise CustomException(e, sys)
 
 
+if __name__ == "__main__":
+    obj = DataIngestion()
+    train_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/train_FD001.txt"
+    test_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/test_FD001.txt"
+    rul_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/RUL_FD001.txt"
 
-if __name__ == '__main__':
-    ingestion = DataIngestion()
-    train, test, rul = ingestion.initiate_data_ingestion()
-    #print(f"Train: {train}\n Test: {test}\n RUL:{rul}")
-    data_transformation = DataTransformation()
-    train_arr, test_arr, _ = data_transformation.initiate_data_transformation(train, test)
-
-    modeltrainer = ModelTrainer()
-    print(modeltrainer.initate_model_trainer(train_arr, test_arr))
+    obj.initiate_data_ingestion(train_path, test_path, rul_path)

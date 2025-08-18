@@ -1,88 +1,68 @@
-import sys
-import pandas as pd
-import numpy as np
 import os
-
-from src.utils import load_object
-from src.logger import logging
+import sys
+import pickle
+import pandas as pd
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from src.exception import CustomException
-from src.components.data_transformation import compute_RUL
-
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from src.logger import logging
 
 
-def read_raw_test_file(file_path):
-    try:
-        column_names = [
-            'unit_number', 'time_in_cycles', 
-            'op_setting_1', 'op_setting_2', 'op_setting_3'
-        ] + [f'sensor_{i}' for i in range(1,22)]
+class ModelEvaluator:
+    def __init__(self, model_path="D:/My Projects/Predictive Maintainability RUL/artifacts/best_model.pkl",
+                 preprocessor_path="D:/My Projects/Predictive Maintainability RUL/artifacts/preprocessor.pkl",
+                 test_data_path="D:/My Projects/Predictive Maintainability RUL/artifacts/processed/processed_test.csv"):
+        try:
+            self.model = self.load_object(model_path)
+            self.preprocessor = self.load_object(preprocessor_path)
+            self.test_data_path = test_data_path
+            logging.info("ModelEvaluator initialized successfully.")
+        except Exception as e:
+            raise CustomException(e, sys)
 
-        df = pd.read_csv(file_path, sep = "\s+", header = None)
-        df.columns = column_names
-        return df
-    except Exception as e:
-        raise CustomException(e,sys)
-
-
-
-class ModelEvaluation:
-    def __init__(self, model_path: str, preprocessor_path: str):
-        self.model_path = model_path
-        self.preprocessor_path = preprocessor_path
+    def load_object(self, file_path):
+        try:
+            with open(file_path, "rb") as f:
+                return pickle.load(f)
+        except Exception as e:
+            raise CustomException(e, sys)
 
     def evaluate(self):
         try:
-            logging.info('Loading trained model and preprocessor')
-            
-            test_path = os.path.join('artifacts', 'raw', 'test_FD001.txt')
-            raw_test_df = read_raw_test_file(test_path)
+            # Load processed test dataset (has engineered features)
+            logging.info(f"Loading test dataset from {self.test_data_path}")
+            test_df = pd.read_csv(self.test_data_path)
 
-            raw_test_df = compute_RUL(raw_test_df)
-            y_true = raw_test_df.groupby('unit_number')['RUL'].first().values
+            # Separate features & target
+            X_test_df = test_df[self.preprocessor.feature_names_in_]
+            y_test = test_df["RUL"]
 
+            logging.info(f"Shape of X_test: {X_test_df.shape}, y_test: {y_test.shape}")
 
-            model = load_object(self.model_path)
-            preprocessor = load_object(self.preprocessor_path)
+            # Transform test features
+            X_test = self.preprocessor.transform(X_test_df)
 
-            logging.info('Computing RUL from test data')
-            raw_test_df['RUL'] = raw_test_df.groupby('unit_number')['time_in_cycles'].transform('max') - raw_test_df['time_in_cycles']
+            # Predictions
+            y_pred = self.model.predict(X_test)
 
-            
-            X_test_df = raw_test_df[preprocessor.feature_names_in_]
-            X_test_transformed = preprocessor.transform(X_test_df)
+            # Evaluation metrics
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = mean_squared_error(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            r2 = r2_score(y_test, y_pred)
 
-            raw_test_df['predicted_RUL'] = model.predict(X_test_transformed)
-            y_pred = raw_test_df.groupby('unit_number')['predicted_RUL'].last().values
+            metrics = {"MSE": mse, "RMSE": rmse, "MAE": mae, "R2": r2}
+            logging.info(f"Evaluation Metrics: {metrics}")
 
-            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-            mae = mean_absolute_error(y_true, y_pred)
-            r2 = r2_score(y_true, y_pred)
-
-            logging.info(f"Evaluation Complete - RMSE: {rmse}, MAE: {mae}, R2: {r2}")
-            print(f" Model Evaluation Results:\nRMSE: {rmse:.2f}\nMAE: {mae:.2f}\nR2 Score: {r2:.4f}")
-
-            return {
-                'RMSE': rmse,
-                'MAE': mae,
-                'R2': r2
-            }
+            return metrics
 
         except Exception as e:
             raise CustomException(e, sys)
-        
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     try:
-        
-        evaluator = ModelEvaluation(
-            model_path = 'D:/My Projects/Predictive Maintainability RUL/artifacts/best_model.pkl',
-            preprocessor_path='D:/My Projects/Predictive Maintainability RUL/artifacts/preprocessor.pkl'
-        
-        )
-
+        evaluator = ModelEvaluator()
         metrics = evaluator.evaluate()
-
-        print('Final Evaluation Metrics: ', metrics)
-    
+        print("Final Evaluation Metrics:", metrics)
     except Exception as ex:
         raise CustomException(ex, sys)

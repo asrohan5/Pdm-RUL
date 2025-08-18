@@ -1,113 +1,87 @@
 import os
-from dataclasses import dataclass
 import sys
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-import joblib
-
-from src.exception import CustomException
 from src.logger import logging
-import pickle
-from src.utils import save_object
+from src.exception import CustomException
 
-def compute_RUL(df):
-    max_cycle = df.groupby('unit_number')['time_in_cycles'].transform('max')
-    df['RUL'] = max_cycle - df['time_in_cycles']
-    return df
-    
-def RUL_bin(df, threshold = 30):
-    df['RUL_bin'] = df['RUL'].apply(lambda x: 1 if x <= threshold else 0)
-    return df
-
-def add_rolling_features(df, sensor_cols, window=5):
-    try:
-        for sensor in sensor_cols:
-            df[f'{sensor}_rolling_mean'] = df.groupby('unit_number')[sensor].transform(lambda x: x.rolling(window=window, min_periods=1).mean())
-            df[f'{sensor}_rolling_std'] = df.groupby('unit_number')[sensor].transform(lambda x: x.rolling(window=window, min_periods=1).std().fillna(0))
-            df[f'{sensor}_min'] = df.groupby('unit_number')[sensor].transform(lambda x: x.rolling(window=window, min_periods=1).min())
-            df[f'{sensor}_max'] = df.groupby('unit_number')[sensor].transform(lambda x: x.rolling(window=window, min_periods=1).max())
-        return df
-    except Exception as e:
-        raise CustomException(e,sys)
-
-
-@dataclass
 class DataTransformationConfig:
-    preprocessor_obj_file_path: str = os.path.join('artifacts', 'preprocessor.pkl')
+    processed_train_path = os.path.join("D:/My Projects/Predictive Maintainability RUL/artifacts", "processed", "train.csv")
+    processed_test_path = os.path.join("D:/My Projects/Predictive Maintainability RUL/artifacts", "processed", "test.csv")
+    processed_rul_path = os.path.join("D:/My Projects/Predictive Maintainability RUL/artifacts", "processed", "rul.csv")
+    preprocessor_path = os.path.join("D:/My Projects/Predictive Maintainability RUL/artifacts", "processed", "preprocessor.pkl")
 
 class DataTransformation:
     def __init__(self):
         self.config = DataTransformationConfig()
-    
-    def get_data_transformer_object(self, feature_cols):
+
+    def add_rolling_features(self, df, sensors, window=5):
+        """Add rolling mean, std, min, max for given sensors."""
+        for sensor in sensors:
+            df[f"{sensor}_mean"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).mean().reset_index(level=0, drop=True)
+            df[f"{sensor}_std"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).std().reset_index(level=0, drop=True).fillna(0)
+            df[f"{sensor}_min"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).min().reset_index(level=0, drop=True)
+            df[f"{sensor}_max"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).max().reset_index(level=0, drop=True)
+        return df
+
+    def initiate_data_transformation(self, train_data_path, test_data_path, rul_data_path):
+        logging.info("Reading raw train, test, and RUL data")
 
         try:
-            
-            num_pipeline = Pipeline(steps =[('scaler', StandardScaler())])
-            num_preprocessor = ColumnTransformer([('num_tran', num_pipeline, feature_cols)])
-            return num_preprocessor
-        
+            # Read raw datasets
+            train_df = pd.read_csv(train_data_path, sep=" ", header=None)
+            test_df = pd.read_csv(test_data_path, sep=" ", header=None)
+            rul_df = pd.read_csv(rul_data_path, header=None)
+
+            # Drop empty columns
+            train_df.drop(train_df.columns[[26, 27]], axis=1, inplace=True)
+            test_df.drop(test_df.columns[[26, 27]], axis=1, inplace=True)
+
+            # Rename columns
+            col_names = ["unit_number", "time_in_cycles", "op_setting_1", "op_setting_2", "op_setting_3"] + [f"sensor{i}" for i in range(1, 22)]
+            train_df.columns = col_names
+            test_df.columns = col_names
+
+            # Compute RUL for train
+            train_df["RUL"] = train_df.groupby("unit_number")["time_in_cycles"].transform("max") - train_df["time_in_cycles"]
+
+            # Compute RUL for test using rul.txt
+            rul_df.columns = ["RUL"]
+            rul_df["unit_number"] = rul_df.index + 1
+            test_df = test_df.merge(rul_df, on="unit_number", how="left")
+
+            # Feature engineering (rolling stats)
+            sensor_cols = [col for col in train_df.columns if "sensor" in col]
+            train_df = self.add_rolling_features(train_df, sensor_cols)
+            test_df = self.add_rolling_features(test_df, sensor_cols)
+
+            # Scaling
+            scaler = StandardScaler()
+            feature_cols = [col for col in train_df.columns if col not in ["unit_number", "RUL"]]
+            train_df[feature_cols] = scaler.fit_transform(train_df[feature_cols])
+            test_df[feature_cols] = scaler.transform(test_df[feature_cols])
+
+            # Save processed files
+            os.makedirs(os.path.dirname(self.config.processed_train_path), exist_ok=True)
+            train_df.to_csv(self.config.processed_train_path, index=False)
+            test_df.to_csv(self.config.processed_test_path, index=False)
+            rul_df.to_csv(self.config.processed_rul_path, index=False)
+
+            logging.info(f"Train data saved at: {self.config.processed_train_path}")
+            logging.info(f"Test data saved at: {self.config.processed_test_path}")
+            logging.info(f"RUL data saved at: {self.config.processed_rul_path}")
+
+            return self.config.processed_train_path, self.config.processed_test_path
+
         except Exception as e:
             raise CustomException(e, sys)
 
-    
-    
 
-    def initiate_data_transformation(self, train_path, test_path):
-        try:
-
-            
-            logging.info('Reading train and test data')
-            train_df = pd.read_csv(train_path)
-            test_df = pd.read_csv(test_path)
-
-            train_df = compute_RUL(train_df)
-            train_df = RUL_bin(train_df)
-
-            test_df = compute_RUL(test_df)
-            test_df = RUL_bin(test_df)
-
-            selected_sensors = ['sensor2', 'sensor3', 'sensor4', 'sensor7', 'sensor8', 'sensor11', 'sensor15']
-
-            train_df = add_rolling_features(train_df, sensor_cols = selected_sensors, window = 5)
-            test_df = add_rolling_features(test_df, sensor_cols= selected_sensors, window=5)
-
-            feature_cols = [col for col in train_df.columns if col not in ['unit_number', 'RUL', 'RUL_bin']]
-
-            logging.info('Separating features adn target')
-            y_col = 'RUL'
-            drop_column = ['unit_number', 'RUL', 'RUL_bin']
-
-            X_train_df = train_df.drop(columns = drop_column)
-            y_train_df = train_df[y_col]
-
-            X_test_df = test_df.drop(columns = drop_column)
-            y_test_df = test_df[y_col]
-
-            logging.info('Applying preprocessing')
-            preprocessing_obj = self.get_data_transformer_object(feature_cols)
-            X_train_arr = preprocessing_obj.fit_transform(X_train_df)
-            X_test_arr = preprocessing_obj.transform(X_test_df)
-
-            logging.info('Saving Preprocessing Object')
-            save_object(
-                file_path = self.config.preprocessor_obj_file_path,
-                obj = preprocessing_obj
-            )
-
-            train_arr = np.c_[X_train_arr, y_train_df]
-            test_arr = np.c_[X_test_arr, y_test_df]
-
-            logging.info('Data Transformation complete')
-
-            return (train_arr, test_arr, self.config.preprocessor_obj_file_path)
-        
-        
-        except Exception as e:
-            raise Exception(e,sys)
-
-
+if __name__ == "__main__":
+    obj = DataTransformation()
+    obj.initiate_data_transformation(
+        train_data_path="D:/My Projects/Predictive Maintainability RUL/artifacts/raw/train_FD001.txt",
+        test_data_path="D:/My Projects/Predictive Maintainability RUL/artifacts/raw/test_FD001.txt",
+        rul_data_path="D:/My Projects/Predictive Maintainability RUL/artifacts/raw/RUL_FD001.txt"
+    )
