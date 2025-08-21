@@ -12,7 +12,7 @@ class DataIngestion:
         self.processed_data_dir = processed_data_dir
         os.makedirs(self.processed_data_dir, exist_ok=True)
 
-        # C-MAPSS FD001 column names
+
         self.column_names = (
             ['unit_number', 'time_in_cycles',
              'op_setting_1', 'op_setting_2', 'op_setting_3'] +
@@ -23,15 +23,15 @@ class DataIngestion:
         logging.info("Starting Data Ingestion")
 
         try:
-            # Read raw train & test with correct headers
+ 
             logging.info("Reading train and test datasets")
             train_df = pd.read_csv(train_path, sep=r"\s+", header=None, names=self.column_names)
             test_df = pd.read_csv(test_path, sep=r"\s+", header=None, names=self.column_names)
 
-            # Read RUL file (single column, no header)
+ 
             rul_df = pd.read_csv(rul_path, sep=r"\s+", header=None, names=['RUL'])
 
-            # Save processed versions
+
             train_file = os.path.join(self.processed_data_dir, "train.csv")
             test_file = os.path.join(self.processed_data_dir, "test.csv")
             rul_file = os.path.join(self.processed_data_dir, "rul.csv")

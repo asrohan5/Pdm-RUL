@@ -23,7 +23,7 @@ class ModelTrainer:
         self.config = ModelTrainerConfig()
 
     def load_data(self):
-        """Load processed train & test data."""
+ 
         train_df = pd.read_csv(self.config.train_path)
         test_df = pd.read_csv(self.config.test_path)
 
@@ -36,7 +36,7 @@ class ModelTrainer:
         return X_train, X_test, y_train, y_test
 
     def get_model_and_params(self, model_name):
-        """Return model and parameter grid based on name."""
+
         if model_name == "RandomForest":
             model = RandomForestRegressor(random_state=42)
             param_grid = {
@@ -78,7 +78,7 @@ class ModelTrainer:
             best_model = grid_search.best_estimator_
             logging.info(f"Best Params for {model_name}: {grid_search.best_params_}")
 
-            # Evaluate on test
+
             y_pred = best_model.predict(X_test)
             mse = mean_squared_error(y_test, y_pred)
             rmse = np.sqrt(mse)
@@ -90,7 +90,7 @@ class ModelTrainer:
             print(f"   Test RMSE: {rmse:.4f}")
             print(f"   Test R2: {r2:.4f}")
 
-            # Save model
+   
             os.makedirs(os.path.dirname(self.config.model_save_path), exist_ok=True)
             joblib.dump(best_model, self.config.model_save_path)
             logging.info(f"Model saved at {self.config.model_save_path}")

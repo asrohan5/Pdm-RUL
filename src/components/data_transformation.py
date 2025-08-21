@@ -17,7 +17,7 @@ class DataTransformation:
         self.config = DataTransformationConfig()
 
     def add_rolling_features(self, df, sensors, window=5):
-        """Add rolling mean, std, min, max for given sensors."""
+
         for sensor in sensors:
             df[f"{sensor}_mean"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).mean().reset_index(level=0, drop=True)
             df[f"{sensor}_std"] = df.groupby("unit_number")[sensor].rolling(window=window, min_periods=1).std().reset_index(level=0, drop=True).fillna(0)
@@ -29,40 +29,37 @@ class DataTransformation:
         logging.info("Reading raw train, test, and RUL data")
 
         try:
-            # Read raw datasets
+
             train_df = pd.read_csv(train_data_path, sep=" ", header=None)
             test_df = pd.read_csv(test_data_path, sep=" ", header=None)
             rul_df = pd.read_csv(rul_data_path, header=None)
 
-            # Drop empty columns
             train_df.drop(train_df.columns[[26, 27]], axis=1, inplace=True)
             test_df.drop(test_df.columns[[26, 27]], axis=1, inplace=True)
 
-            # Rename columns
             col_names = ["unit_number", "time_in_cycles", "op_setting_1", "op_setting_2", "op_setting_3"] + [f"sensor{i}" for i in range(1, 22)]
             train_df.columns = col_names
             test_df.columns = col_names
 
-            # Compute RUL for train
+
             train_df["RUL"] = train_df.groupby("unit_number")["time_in_cycles"].transform("max") - train_df["time_in_cycles"]
 
-            # Compute RUL for test using rul.txt
+
             rul_df.columns = ["RUL"]
             rul_df["unit_number"] = rul_df.index + 1
             test_df = test_df.merge(rul_df, on="unit_number", how="left")
 
-            # Feature engineering (rolling stats)
+
             sensor_cols = [col for col in train_df.columns if "sensor" in col]
             train_df = self.add_rolling_features(train_df, sensor_cols)
             test_df = self.add_rolling_features(test_df, sensor_cols)
 
-            # Scaling
+
             scaler = StandardScaler()
             feature_cols = [col for col in train_df.columns if col not in ["unit_number", "RUL"]]
             train_df[feature_cols] = scaler.fit_transform(train_df[feature_cols])
             test_df[feature_cols] = scaler.transform(test_df[feature_cols])
 
-            # Save processed files
             os.makedirs(os.path.dirname(self.config.processed_train_path), exist_ok=True)
             train_df.to_csv(self.config.processed_train_path, index=False)
             test_df.to_csv(self.config.processed_test_path, index=False)
