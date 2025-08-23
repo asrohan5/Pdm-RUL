@@ -1,0 +1,21 @@
+{
+  "selected_sensors": [
+    "sensor2",
+    "sensor3",
+    "sensor4",
+    "sensor7",
+    "sensor11",
+    "sensor12",
+    "sensor15"
+  ],
+  "healthy_threshold": 300,
+  "failed_low": 0,
+  "failed_high": 4,
+  "artifacts": {
+    "processed_train_csv": "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr\\train_svr.csv",
+    "processed_test_csv": "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr\\test_svr.csv",
+    "vhi_projection_model": "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr\\vhi_projection.pkl",
+    "vhi_scaler": "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr\\vhi_scaler.pkl",
+    "library_sequences": "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr\\library_train_sequences.pkl"
+  }
+}

@@ -136,6 +136,8 @@ celerybeat.pid
 
 
 results1.txt
+svr_xgb_results.txt
+only_xb_tabular_results.txt
 
 
 
