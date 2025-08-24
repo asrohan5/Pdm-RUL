@@ -1,68 +1,54 @@
 import os
-import sys
-import pickle
+import json
 import pandas as pd
+import numpy as np
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from src.exception import CustomException
-from src.logger import logging
 
-
-class ModelEvaluator:
-    def __init__(self, model_path="D:/My Projects/Predictive Maintainability RUL/artifacts/best_model.pkl",
-                 preprocessor_path="D:/My Projects/Predictive Maintainability RUL/artifacts/preprocessor.pkl",
-                 test_data_path="D:/My Projects/Predictive Maintainability RUL/artifacts/processed/processed_test.csv"):
-        try:
-            self.model = self.load_object(model_path)
-            self.preprocessor = self.load_object(preprocessor_path)
-            self.test_data_path = test_data_path
-            logging.info("ModelEvaluator initialized successfully.")
-        except Exception as e:
-            raise CustomException(e, sys)
-
-    def load_object(self, file_path):
-        try:
-            with open(file_path, "rb") as f:
-                return pickle.load(f)
-        except Exception as e:
-            raise CustomException(e, sys)
-
-    def evaluate(self):
-        try:
-            # Load processed test dataset (has engineered features)
-            logging.info(f"Loading test dataset from {self.test_data_path}")
-            test_df = pd.read_csv(self.test_data_path)
-
-            # Separate features & target
-            X_test_df = test_df[self.preprocessor.feature_names_in_]
-            y_test = test_df["RUL"]
-
-            logging.info(f"Shape of X_test: {X_test_df.shape}, y_test: {y_test.shape}")
-
-            # Transform test features
-            X_test = self.preprocessor.transform(X_test_df)
-
-            # Predictions
-            y_pred = self.model.predict(X_test)
-
-            # Evaluation metrics
-            mse = mean_squared_error(y_test, y_pred)
-            rmse = mean_squared_error(y_test, y_pred)
-            mae = mean_absolute_error(y_test, y_pred)
-            r2 = r2_score(y_test, y_pred)
-
-            metrics = {"MSE": mse, "RMSE": rmse, "MAE": mae, "R2": r2}
-            logging.info(f"Evaluation Metrics: {metrics}")
-
-            return metrics
-
-        except Exception as e:
-            raise CustomException(e, sys)
-
+def evaluate_predictions(
+    predictions_csv: str,
+    metrics_json: str = None,
+    plot: bool = False
+) -> dict:
+    df = pd.read_csv(predictions_csv)
+    if "RUL_true" not in df.columns or "RUL_pred" not in df.columns:
+        raise ValueError("Predictions CSV must include columns RUL_true and RUL_pred.")
+    df = df.dropna(subset=["RUL_true", "RUL_pred"])
+    y_true = df["RUL_true"].values
+    y_pred = df["RUL_pred"].values
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    results = {
+        "rmse": float(rmse),
+        "mae": float(mae),
+        "r2": float(r2),
+        "n_samples": int(len(y_true)),
+    }
+    print(f"RMSE: {rmse:.3f}\nMAE: {mae:.3f}\nR²: {r2:.3f}, N: {len(y_true)}")
+    if metrics_json is not None:
+        with open(metrics_json, "w") as f:
+            json.dump(results, f, indent=2)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6,6))
+        plt.scatter(y_true, y_pred, alpha=0.6)
+        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], "--k", lw=2)
+        plt.xlabel("True RUL")
+        plt.ylabel("Predicted RUL")
+        plt.title("Predicted vs True RUL")
+        plt.show()
+        plt.figure()
+        plt.hist(y_true - y_pred, bins=30, alpha=0.7)
+        plt.xlabel("Error (True - Predicted RUL)")
+        plt.ylabel("Frequency")
+        plt.title("Prediction Errors")
+        plt.show()
+    return results
 
 if __name__ == "__main__":
-    try:
-        evaluator = ModelEvaluator()
-        metrics = evaluator.evaluate()
-        print("Final Evaluation Metrics:", metrics)
-    except Exception as ex:
-        raise CustomException(ex, sys)
+    # Example usage
+    base_dir = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular"
+    predictions_csv = os.path.join(base_dir, "xgb_tabular_predictions.csv")
+    metrics_json = os.path.join(base_dir, "xgb_tabular_eval_metrics.json")
+    evaluate_predictions(predictions_csv, metrics_json, plot=False)
+

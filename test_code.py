@@ -1,9 +1,7 @@
-import pandas as pd
+from src.components.model_evaluation import evaluate_predictions
 
-df = pd.read_csv('D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular/test_tabular.csv')
-if 'RUL' in df.columns:
-    print('yes')
-else:
-    print('no')
-#print(df['RUL'].head())
-#print(df['RUL'].isnull().sum())
+pred_csv = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular/xgb_tabular_predictions_new.csv"
+metrics_json = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular/save_metrics.json"
+
+metrics = evaluate_predictions(pred_csv, metrics_json)
+print(metrics)

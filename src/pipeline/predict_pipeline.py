@@ -1,40 +1,76 @@
+# src/pipeline/predict_pipeline.py
+
 import os
 import sys
+import logging
 import pandas as pd
-import numpy as np
-
-from src.utlis import load_object
+import joblib
+from src.components.data_transformation_tabular import DataTransformationTabular, TabularTransformConfig
 from src.exception import CustomException
-from src.logger import logging
-from src.components.data_transformation import compute_RUL, add_rolling_features
 
-class PredictPipeline:
-    def __init__(self):
-        self.model_path = os.path.join('artifacts', 'best_model.pkl')
-        self.preprocessor_path = os.path.join('artifacts', 'preprocessor.pkl')
+def run_predict_pipeline(
+    raw_test_path: str,
+    rul_test_path: str,
+    processed_dir: str,
+    model_path: str,
+    output_csv: str
+):
+    try:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+        logging.info("Starting Predict Pipeline")
 
-        def predict(self, input_df):
-            try:
-                logging.info('Loading model and preprocessor')
-                model = load_object(self.model_path)
-                preprocessor = load_object(self.preprocessor_path)
+        # STEP 1: Data validation
+        if not os.path.exists(raw_test_path):
+            raise CustomException(f"Test file not found: {raw_test_path}", sys)
+        if not os.path.exists(rul_test_path):
+            logging.warning(f"RUL file for test set not found: {rul_test_path} (predictions will have no ground-truth labels if required)")
+        if not os.path.isdir(processed_dir):
+            raise CustomException(f"Processed dir missing: {processed_dir}", sys)
+        if not os.path.exists(model_path):
+            raise CustomException(f"Model artifact not found: {model_path}", sys)
 
-                logging.info('computing RUL and rollling features')
-                inpute_df = compute_RUL(input_df)
+        # STEP 2: Data Transformation (for test set)
+        config = TabularTransformConfig(
+            raw_dir=os.path.dirname(raw_test_path),
+            test_raw=os.path.basename(raw_test_path),
+            rul_raw=os.path.basename(rul_test_path),
+            processed_dir=processed_dir,
+            include_ops=False  # Or True, matching your model config
+        )
+        transformer = DataTransformationTabular(cfg=config)
+        _, test_out_path = transformer.initiate()
+        logging.info(f"Test set transformed: {test_out_path}")
 
-                selected_sensors = ['sensor2', 'sensor3', 'sensor4', 'sensor7', 'sensor8', 'sensor11', 'sensor15']
-                input_df = add_rolling_features(input_df, sensor_cols = selected_senors, window = 5)
-                
-                drop_columns = ['unit_number', 'RUL', 'RUL_bins'] if 'RUL_bin' in input_df.columns else ['unit_number', 'RUL']
-                features = input_df.drop(columns = [col for col in drop_columns if col in input_df.columns])
+        # STEP 3: Prediction
+        scaler_obj = joblib.load(os.path.join(processed_dir, "tabular_scaler.pkl"))
+        feature_cols = scaler_obj["feature_cols"]
+        model = joblib.load(model_path)
+        test_df = pd.read_csv(test_out_path)
 
-                transformed_features = preprocessor.transform(features)
+        X_test = test_df[feature_cols].to_numpy(dtype=float)
+        y_pred = model.predict(X_test)
 
-                logging.info('Making Predictions')
-                predictions = model.predict(transformed_features)
+        output_df = test_df[["unit_number", "time_in_cycles"]].copy()
+        output_df["RUL_pred"] = y_pred
+        # Optionally, keep ground-truth RUL if available
+        if "RUL" in test_df.columns:
+            output_df["RUL_true"] = test_df["RUL"]
 
-                input_df['Predicted_RUL'] = predictions
-                return input_df[['unit_number', 'time_in_cycles', 'Predicted_RUL']].groupby('unit_number').last().reset_index()
+        output_df.to_csv(output_csv, index=False)
+        logging.info(f"Predictions saved to: {output_csv}")
+        print(f"Prediction pipeline completed successfully. Output file: {output_csv}")
 
-            except Exception as e:
-                raise CustomException(e,sys)
+        return output_df
+
+    except Exception as e:
+        logging.error(f"Prediction pipeline failed: {str(e)}")
+        raise CustomException(e, sys)
+
+if __name__ == "__main__":
+    # CUSTOMIZE this block as needed
+    base_dir = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular"
+    raw_test_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/test_FD001.txt"
+    rul_test_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/RUL_FD001.txt"
+    model_path = os.path.join(base_dir, "xgb_tabular_model.pkl")
+    output_csv = os.path.join(base_dir, "xgb_tabular_predictions_new.csv")
+    run_predict_pipeline(raw_test_path, rul_test_path, base_dir, model_path, output_csv)
