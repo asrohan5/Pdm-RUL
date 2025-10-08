@@ -1,4 +1,3 @@
-# src/components/data_transformation_2.py
 import os
 import sys
 import pandas as pd
