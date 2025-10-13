@@ -66,7 +66,7 @@ class ModelTabular:
             if feature_cols is None:
                 raise CustomException("Scaler object missing 'feature_cols' key.", sys)
 
-            # Basic checks omitted for brevity, copy from earlier as needed.
+            
 
             return train_df, test_df, scaler_obj, meta
         except Exception as e:

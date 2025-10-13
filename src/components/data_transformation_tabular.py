@@ -1,5 +1,3 @@
-# src/components/data_transformation_tabular.py
-
 import os
 import sys
 import json
@@ -73,7 +71,7 @@ class DataTransformationTabular:
         df = df.copy()
         max_cycle = df.groupby("unit_number")["time_in_cycles"].transform("max")
         df["RUL"] = max_cycle - df["time_in_cycles"]
-        df["RUL"] = np.minimum(df["RUL"], 130)  # Cap RUL at 130 for training stability
+        df["RUL"] = np.minimum(df["RUL"], 130) 
         return df
 
     def _merge_test_rul_last_cycle(self, test_df: pd.DataFrame, rul_df: pd.DataFrame) -> pd.DataFrame:

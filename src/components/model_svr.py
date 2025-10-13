@@ -1,5 +1,3 @@
-# src/components/model_svr.py
-
 import os
 import sys
 import json
@@ -17,28 +15,27 @@ from src.exception import CustomException
 
 @dataclass
 class SVRConfig:
-    # Inputs from transformation
+    
     processed_dir: str = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_svr"
     train_csv: str = "train_svr.csv"
     test_csv: str = "test_svr.csv"
     library_sequences: str = "library_train_sequences.pkl"
 
-    # Outputs
+ 
     model_path: str = "svr_model.pkl"
     predictions_csv: str = "svr_predictions.csv"
     metrics_json: str = "svr_metrics.json"
 
-    # SVR hyperparameters
+   
     C: float = 10.0
     epsilon: float = 0.1
-    gamma: float = 0.01  # suitable for normalized inputs; tune if needed
+    gamma: float = 0.01 
 
-    # Similarity alignment settings
-    window_size: int = 50  # recent points from test to align
-    top_k: int = 10        # neighbors to use for interpolation
-    min_overlap: int = 15  # minimum overlapping points
 
-    # Random seed
+    window_size: int = 50 
+    top_k: int = 10     
+    min_overlap: int = 15 
+
     random_state: int = 42
 
 
@@ -66,14 +63,12 @@ class ModelSVR:
             logging.info(f"Loading reference library: {self.library_path}")
             library = joblib.load(self.library_path)
 
-            # Basic checks
             for col in ["tau", "VHI"]:
                 if col not in train_df.columns:
                     raise CustomException(f"Column '{col}' missing in train CSV.", sys)
                 if col not in test_df.columns:
                     raise CustomException(f"Column '{col}' missing in test CSV.", sys)
 
-            # Ensure numeric and finite
             for df, name in [(train_df, "train"), (test_df, "test")]:
                 for col in ["tau", "VHI"]:
                     vals = df[col].to_numpy(dtype=float)
@@ -86,13 +81,10 @@ class ModelSVR:
 
     @staticmethod
     def _prepare_curve_training_data(train_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Prepare (tau, VHI) pairs for training the global SVR degradation curve.
-        SVR input X is tau (1D), target y is VHI.
-        """
+       
         tau = train_df["tau"].to_numpy(dtype=float)
         vhi = train_df["VHI"].to_numpy(dtype=float)
-        # Remove any non-finite rows
+       
         mask = np.isfinite(tau) & np.isfinite(vhi)
         tau = tau[mask]
         vhi = vhi[mask]
@@ -103,9 +95,7 @@ class ModelSVR:
         return X, y
 
     def _fit_svr(self, X: np.ndarray, y: np.ndarray) -> SVR:
-        """
-        Fit SVR model h = f(tau).
-        """
+        
         try:
             svr = SVR(kernel="rbf", C=self.cfg.C, epsilon=self.cfg.epsilon, gamma=self.cfg.gamma)
             svr.fit(X, y)
@@ -117,14 +107,12 @@ class ModelSVR:
 
     @staticmethod
     def _ssd(a: np.ndarray, b: np.ndarray) -> float:
-        """
-        Sum of squared differences between two arrays of equal length.
-        """
+        
         m = min(a.shape[0], b.shape)
         if m == 0:
             return np.inf
         diff = a[:m] - b[:m]
-        # Skip non-finite diffs
+      
         mask = np.isfinite(diff)
         if not np.any(mask):
             return np.inf
@@ -138,29 +126,24 @@ class ModelSVR:
         ref_tau: np.ndarray,
         ref_vhi: np.ndarray
     ) -> Tuple[float, float]:
-        """
-        Align the last W points of test sequence to a window in the reference VHI curve by minimizing SSD.
-        Then convert the best alignment to an RUL estimate (in cycles).
-        Returns (rul_est, best_ssd). If alignment is not possible, returns (np.nan, np.inf).
-        """
+     
         W = self.cfg.window_size
         min_overlap = self.cfg.min_overlap
 
-        # Validate inputs
         if test_vhi.size == 0 or ref_vhi.size == 0:
             return np.nan, np.inf
 
-        # Use the last w points from the test sequence
+      
         w = min(W, test_vhi.shape[0])
         if w < min_overlap:
             return np.nan, np.inf
 
         test_seg = test_vhi[-w:]
-        # Ensure finiteness
+ 
         if not np.isfinite(test_seg).any():
             return np.nan, np.inf
 
-        # Slide over reference with a window of length w
+     
         best_ssd = np.inf
         best_ref_end_idx: Optional[int] = None
 
@@ -173,12 +156,12 @@ class ModelSVR:
             if start < 0:
                 continue
             ref_seg = ref_vhi[start:end]
-            # Focus on last m points to match sizes
+        
             m = min(test_seg.shape, ref_seg.shape)
             if m < min_overlap:
                 continue
 
-            # Filter non-finite
+
             ssd = self._ssd(test_seg[-m:], ref_seg[-m:])
             if ssd < best_ssd:
                 best_ssd = ssd
@@ -187,16 +170,13 @@ class ModelSVR:
         if best_ref_end_idx is None or not np.isfinite(best_ssd):
             return np.nan, np.inf
 
-        # Convert alignment to RUL:
-        # ref_tau is negative up to 0 at failure. Aligned end index corresponds to ref_tau[end-1].
-        # RUL_est ≈ -ref_tau[end-1] (since tau=0 at failure)
         aligned_tau = ref_tau[best_ref_end_idx - 1]
         if not np.isfinite(aligned_tau):
             return np.nan, np.inf
 
         rul_est = float(-aligned_tau)
         if rul_est < 0:
-            # If negative due to noisy tau, clamp to 0
+           
             rul_est = 0.0
 
         return rul_est, best_ssd
@@ -206,15 +186,11 @@ class ModelSVR:
         test_unit_df: pd.DataFrame,
         library: Dict[int, Dict[str, np.ndarray]]
     ) -> float:
-        """
-        Predict RUL for a single test unit by aligning to all reference curves, then
-        combining top-K estimates with weights 1/SSD.
-        """
-        # Extract test unit sequences
+    
         test_tau = test_unit_df["tau"].to_numpy(dtype=float)
         test_vhi = test_unit_df["VHI"].to_numpy(dtype=float)
 
-        # Remove non-finite
+   
         mask = np.isfinite(test_tau) & np.isfinite(test_vhi)
         test_tau = test_tau[mask]
         test_vhi = test_vhi[mask]
@@ -222,13 +198,13 @@ class ModelSVR:
         if test_vhi.size == 0:
             return np.nan
 
-        # Align with each reference
-        estimates: List[Tuple[float, float]] = []  # (rul_est, ssd)
+     
+        estimates: List[Tuple[float, float]] = [] 
         for uid, seq in library.items():
             ref_tau = np.asarray(seq["tau"], dtype=float)
             ref_vhi = np.asarray(seq["VHI"], dtype=float)
 
-            # Clean reference
+
             mask_ref = np.isfinite(ref_tau) & np.isfinite(ref_vhi)
             ref_tau = ref_tau[mask_ref]
             ref_vhi = ref_vhi[mask_ref]
@@ -242,11 +218,10 @@ class ModelSVR:
         if len(estimates) == 0:
             return np.nan
 
-        # Take top-K by smallest SSD
         estimates.sort(key=lambda x: x[1])
         top = estimates[: self.cfg.top_k]
 
-        # Weighted interpolation with weights 1/SSD
+    
         weights = np.array([1.0 / e[1] for e in top], dtype=float)
         ruls = np.array([e for e in top], dtype=float)
         wsum = float(np.sum(weights))
@@ -255,26 +230,20 @@ class ModelSVR:
         return float(np.dot(weights, ruls) / wsum)
 
     def train_and_predict(self) -> Tuple[str, str]:
-        """
-        Full pipeline:
-        - Load processed data and library
-        - Fit SVR degradation curve h=f(tau) (saved for analysis/future use)
-        - Predict RUL for each test unit with similarity-based alignment
-        - Compute metrics and save outputs
-        """
+      
         try:
-            # Load
+         
             train_df, test_df, library = self._load_data()
 
-            # Train SVR degradation curve (for analysis/future use)
+            
             X_train, y_train = self._prepare_curve_training_data(train_df)
             _ = self._fit_svr(X_train, y_train)
 
-            # Predict per test unit
+   
             preds = []
             for unit_id, grp in test_df.groupby("unit_number", sort=True):
                 rul_pred = self._predict_test_unit_rul(grp, library)
-                # True RUL is same for all rows of a unit (from last-cycle merge)
+         
                 true_rul = grp["RUL"].dropna().max()
                 preds.append(
                     {
@@ -288,7 +257,6 @@ class ModelSVR:
             preds_df.to_csv(self.preds_out, index=False)
             logging.info(f"Saved SVR predictions at: {self.preds_out}")
 
-            # Compute metrics on units with valid labels and predictions
             eval_df = preds_df.dropna(subset=["RUL_true", "RUL_pred"]).copy()
             if not eval_df.empty:
                 y_true = eval_df["RUL_true"].to_numpy(dtype=float)
@@ -297,7 +265,7 @@ class ModelSVR:
                 rmse = math.sqrt(mean_squared_error(y_true, y_pred))
                 mae = mean_absolute_error(y_true, y_pred)
 
-                # MP: mean percentage error
+
                 with np.errstate(divide="ignore", invalid="ignore"):
                     rel_err = (y_pred - y_true) / np.where(y_true == 0, np.nan, y_true)
                 mp = float(np.nanmean(rel_err))

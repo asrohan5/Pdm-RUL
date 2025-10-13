@@ -46,7 +46,7 @@ def evaluate_predictions(
     return results
 
 if __name__ == "__main__":
-    # Example usage
+
     base_dir = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular"
     predictions_csv = os.path.join(base_dir, "xgb_tabular_predictions.csv")
     metrics_json = os.path.join(base_dir, "xgb_tabular_eval_metrics.json")

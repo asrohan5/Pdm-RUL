@@ -1,5 +1,3 @@
-# src/pipeline/predict_pipeline.py
-
 import os
 import sys
 import logging
@@ -19,7 +17,7 @@ def run_predict_pipeline(
         logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
         logging.info("Starting Predict Pipeline")
 
-        # STEP 1: Data validation
+    
         if not os.path.exists(raw_test_path):
             raise CustomException(f"Test file not found: {raw_test_path}", sys)
         if not os.path.exists(rul_test_path):
@@ -29,19 +27,19 @@ def run_predict_pipeline(
         if not os.path.exists(model_path):
             raise CustomException(f"Model artifact not found: {model_path}", sys)
 
-        # STEP 2: Data Transformation (for test set)
+        
         config = TabularTransformConfig(
             raw_dir=os.path.dirname(raw_test_path),
             test_raw=os.path.basename(raw_test_path),
             rul_raw=os.path.basename(rul_test_path),
             processed_dir=processed_dir,
-            include_ops=False  # Or True, matching your model config
+            include_ops=False  
         )
         transformer = DataTransformationTabular(cfg=config)
         _, test_out_path = transformer.initiate()
         logging.info(f"Test set transformed: {test_out_path}")
 
-        # STEP 3: Prediction
+   
         scaler_obj = joblib.load(os.path.join(processed_dir, "tabular_scaler.pkl"))
         feature_cols = scaler_obj["feature_cols"]
         model = joblib.load(model_path)
@@ -52,7 +50,7 @@ def run_predict_pipeline(
 
         output_df = test_df[["unit_number", "time_in_cycles"]].copy()
         output_df["RUL_pred"] = y_pred
-        # Optionally, keep ground-truth RUL if available
+      
         if "RUL" in test_df.columns:
             output_df["RUL_true"] = test_df["RUL"]
 
@@ -67,7 +65,7 @@ def run_predict_pipeline(
         raise CustomException(e, sys)
 
 if __name__ == "__main__":
-    # CUSTOMIZE this block as needed
+ 
     base_dir = "D:/My Projects/Predictive Maintainability RUL/artifacts/processed_tabular"
     raw_test_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/test_FD001.txt"
     rul_test_path = "D:/My Projects/Predictive Maintainability RUL/artifacts/raw/RUL_FD001.txt"
